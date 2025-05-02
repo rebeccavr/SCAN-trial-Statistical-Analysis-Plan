@@ -1,0 +1,1318 @@
+### 'SCAN' TRIAL STATISTICAL ANALYSIS PLAN
+
+# Authors: D.M. and R.V.R.
+# Date: 02/05/2025
+# Purpose: To address survey data from the SCAN trial, specifically regarding the primary outcome and secondary outcome psychometrics.
+# Trial Registration: ACTRN12622000634774
+
+## CODING DATA FOR ANALYSIS ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+#  Import data
+data = read.csv('Z:\\Lab_Manuscripts_Ethics_Grants\\Manuscripts\\InPreparation\\SCAN_trial\\data\\Complete Data of Primary Outcome cleaned.csv')
+secondary = read.csv('Z:\\Lab_Manuscripts_Ethics_Grants\\Manuscripts\\InPreparation\\SCAN_trial\\data\\SCANAtNeuRAVisit_DATA.csv') #Secondary outcome
+
+# Recode categorical variables
+
+#install.packages("tidyverse")
+library(tidyverse)
+
+# Secondary outcome
+secondary <- secondary %>% mutate(preorpost #pre or post medication arm
+                                  = case_when(preorpost == 0 ~ "pre", 
+                                              preorpost == 1 ~ "post"))
+secondary <- secondary %>% mutate(atscannerpain #in pain at scanner 
+                                  = case_when(atscannerpain == 0 ~ "not in pain", 
+                                              atscannerpain == 1 ~ "in pain"))
+secondary <- secondary %>% mutate(atscannerpain_3 #Did you take any pain medication today?
+                                  = case_when(atscannerpain_3 == 0 ~ "did not take pain meds", 
+                                              atscannerpain_3 == 1 ~ "took pain meds"))
+secondary <- secondary %>% mutate(medication_7days #Have you taken any additional medications compared to normal in the last 7 days?
+                                  = case_when(medication_7days == 0 ~ "No", 
+                                              medication_7days == 1 ~ "Yes"))
+secondary <- secondary %>% mutate(pain_medications #Have you taken any additional pain medications today? e.g. 2 tablets of paracetamol for a headache. 
+                                  = case_when(pain_medications == 0 ~ "No", 
+                                              pain_medications == 1 ~ "Yes"))
+secondary <- secondary %>%
+  mutate(medication_phase = case_when(
+    session_number %in% c(2, 4) ~ "active",
+    session_number %in% c(1, 3) ~ "inactive",
+    TRUE ~ NA_character_ # Handles unexpected values
+  ))
+
+
+# Recode dates and times
+
+#install.packages("hms")
+#install.packages("dplyr")
+#install.packages("lubridate")
+library(hms)
+library(dplyr)
+library(lubridate)
+
+
+data$start_date <- as.Date(data$start_date, format = "%d/%m/%Y")
+data$date <- as.Date(data$date, format = "%d/%m/%Y")
+
+secondary$general_health_before_attending_scanner_timestamp <- as.Date(secondary$general_health_before_attending_scanner_timestamp, format = "%d/%m/%Y %H:%M") 
+secondary$dob <- as.Date(secondary$dob, format = "%d/%m/%Y")
+secondary$component4_2_2 <- parse_hm(secondary$component4_2_2)
+secondary$component4_2_1 <- parse_hm(secondary$component4_2_1) 
+
+# Creating (nominal) categorical variables
+
+# Primary Outcome
+data$id <- as.factor(data$id) 
+data$treatment <- as.factor(data$treatment)
+data$day_week <- as.factor(data$day_week)
+data$arm <- as.factor(data$arm)
+data$phase <- as.factor(data$phase)
+data$time <- as.factor(data$time)
+
+
+# Secondary Outcome
+secondary$medication_phase <- as.factor(secondary$medication_phase)
+secondary$subject_number <- as.factor(secondary$subject_number)
+secondary$session_number <- as.factor(secondary$session_number)
+secondary$ip <- as.factor(secondary$ip)
+secondary$arm <- as.factor(secondary$arm)
+secondary$preorpost <- as.factor(secondary$preorpost)
+secondary$atscannerpain.f <- as.factor(secondary$atscannerpain)
+secondary$atscannerpain_3.f <- as.factor(secondary$atscannerpain_3)
+secondary$medication_7days.f <- as.factor(secondary$medication_7days)
+secondary$pain_medications.f <- as.factor(secondary$pain_medications)
+secondary <- secondary %>%
+  group_by(subject_number) %>%
+  mutate(order = if_else(first(ip[arm == 1]) == "A", "A_first", "B_first")) %>%
+  ungroup()
+secondary$order <- as.factor(secondary$order)
+secondary <- secondary %>% mutate(general_health_before_attending_scanner_timestamp, #insert the first time/date 
+                                  dob, #insert the second time/date
+                                  age #insert your new variable name
+                                  = as.numeric(difftime(general_health_before_attending_scanner_timestamp, dob, units = "days") / 365.25)) #calculate the difference between the two in years
+
+
+# Recode and create numeric variables
+
+data$day_tx <- as.numeric(data$day_tx) #insert your variable name after each '$'
+secondary$age_int <- as.integer(secondary$age)
+
+## Check the structure of data
+#install.packages("summarytools")
+#install.packages("skimr")
+library(summarytools) # needed for freq() and dfSummary()
+library(skimr) # needed for skim()
+
+str(data) 
+View(data) #checking that the data looks fine at first glance
+view(dfSummary(data)) #and make sure it looks good in more detail 
+
+
+## STRUCTURING DATA FOR ANALYSIS ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Simplifying the 'key' variables
+
+#Primary Outcome
+id <- data$id 
+arm <- data$arm
+treatment <- data$treatment
+start_date <- data$start_date
+date <- data$date
+day_week <- data$day_week
+day_tx <- data$day_tx
+phase <- data$phase
+time <- data$time
+pain <- data$pain
+
+
+#Secondary Outcome
+id_sec <- secondary$subject_number
+session_sec <- secondary$session_number
+ip_sec <- secondary$ip
+arm_sec <- secondary$arm
+preorpost <- secondary$preorpost
+medication_phase <- secondary$medication_phase
+age <- secondary$age
+order_sec <- secondary$order
+
+# Calculate / create any new categorical variables
+
+#Primary outcome
+data <- data %>%
+  group_by(id) %>%
+  mutate(order = ifelse(first(treatment[arm == 1]) == "A", "A_first", "B_first")) %>%
+  ungroup()
+data$order <- as.factor(data$order)
+order <- data$order
+table(order)
+unique(order)
+
+  #Calculate max pain
+data_maxpain <- data %>%
+  pivot_wider(names_from = time, values_from = pain)
+
+data_maxpain <- data_maxpain %>%
+  unnest(cols = c(T1, T2, T3))
+
+data_maxpain <- data_maxpain %>%
+  mutate(max_pain = pmax(T1, T2, T3, na.rm = TRUE))
+
+data$pain.f <- factor(data$pain, levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"), ordered = TRUE)
+pain.f <- data$pain.f 
+data_maxpain$max_pain.f <- factor(data_maxpain$max_pain, levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"), ordered = TRUE)
+max_pain.f <- data_maxpain$max_pain.f 
+max_pain <- data_maxpain$max_pain 
+
+# Check max pain duplicates
+data %>%
+  dplyr::group_by(id, arm, treatment, start_date, date, day_week, day_tx, phase, order, time) %>%
+  dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+  dplyr::filter(n > 1L) %>%
+  print(n = 100)
+# No issues with duplicates for primary outcome. All the ones flagged are simply the same pain ratings. 
+
+#Secondary outcomes
+# Neuropathic Pain Questionnaire (NPQ)
+# <0: Predicts non-neuropathic pain
+# >0: Predicts neuropathic pain
+secondary <- secondary %>% 
+  mutate(NPQ_Score = rowSums(cbind(q1npq * 0.006 + q2npq * 0.005 + q3npq * 0.005 +  
+                                     q4npq * 0.02 + q5npq*-0.008 + q6npq*0.01 + q7npq*-0.004 + 
+                                     q8npq*0.004 + q9npq*0.006 + q10npq*-0.003 + q11npq*0.006 + 
+                                     q12npq*-0.005 - 1.408), na.rm = TRUE))
+
+
+# Depression, Anxiety, and Stress Scale (DASS)
+# Normal: Depression 0-9, Anxiety 0-7, Stress 0-14
+# Mild: Depression 10-13, Anxiety 8-9, Stress 15-18
+# Moderate: Depression 14-20, Anxiety 10-14, Stress 19-25
+# Severe: Depression 28+, Anxiety 20+, Stress 34+
+secondary <- secondary %>%
+  rowwise() %>%  # Ensures row-wise operations
+  mutate(DASS_Depression = sum(c_across(starts_with("depression_")), na.rm = FALSE),
+         DASS_Anxiety = sum(c_across(starts_with("anxiety_")), na.rm = FALSE),
+         DASS_Stress = sum(c_across(starts_with("stress_")), na.rm = FALSE), anxeity_4) %>%
+  ungroup()  # Ungroup to return to normal data frame
+
+# Pain Catastrophizing Scale (PCS)
+# Range is 0-42 (each)
+# A total score of >30 represents a clinically significant level of pain catastrophization. Subcatorised from 0-20 as low, 21-30 moderate, 31+ as high catastrophising.
+secondary <- secondary %>%
+  rowwise() %>% 
+  mutate(PCS_Score = sum(c_across(starts_with("pcs")), na.rm = FALSE)) %>% 
+  ungroup()
+#  - Subscale: Rumination
+secondary <- secondary %>%
+  rowwise() %>% 
+  mutate(PCS_Rumination = rowSums(cbind(pcs8 + pcs9 + pcs10 + pcs11), na.rm = FALSE)) %>% 
+  ungroup()
+#  - Subscale: Magnification
+secondary <- secondary %>%
+  rowwise() %>% 
+  mutate(PCS_Magnification = rowSums(cbind(pcs6 + pcs7 + pcs13), na.rm = FALSE)) %>% 
+  ungroup()
+#  - Subscale: Helplessness 
+secondary <- secondary %>%
+  rowwise() %>% 
+  mutate(PCS_Helplessness = rowSums(cbind(pcs1 + pcs2 + pcs3 + pcs4 + pcs5 + pcs12), na.rm = FALSE)) %>% 
+  ungroup()
+
+
+# State-Trait Anxiety Inventory (STAI)
+# Range from 20-80, the higher the better
+# It has 2 sub-categorical with 20 items each. The STAI-State scored as 1 (not at all) to 4 (very much so) and STAI-Trait from 1 (almost never) to 4 (almost always).
+# Generally it is used as continuous however can be sub-catorised from 20-37 as 'Low Anxiety', 38-44 as 'Moderate Anxiety', 45+ as 'High Anxiety' within Trait and State. 
+
+# Compute STAI State Score
+
+secondary <- secondary %>%
+  rowwise() %>%
+  mutate(STAI_State_Score = sum(
+    (4 - stai_state_1), (4 - stai_state_2), stai_state_3, stai_state_4,
+    (4 - stai_state_5), stai_state_6, stai_state_7, (4 - stai_state_8),
+    stai_state_9, stai_state_10, (4 - stai_state_11), stai_state_12,
+    stai_state_13, stai_state_14, (4 - stai_state_15), (4 - stai_state_16),
+    stai_state_17, stai_state_18, (4 - stai_state_19), (4 - stai_state_20),
+    na.rm = FALSE
+  ),
+  STAI_Trait_Score = sum(
+    (4 - stai_trait_1), stai_trait_2, stai_trait_3, stai_trait_4,
+    stai_trait_5, (4 - stai_trait_6), (4 - stai_trait_7), stai_trait_8,
+    stai_trait_9, (4 - stai_trait_10), stai_trait_11, stai_trait_12,
+    (4 - stai_trait_13), stai_trait_14, stai_trait_15, (4 - stai_trait_16),
+    stai_trait_17, stai_trait_18, (4 - stai_trait_19), stai_trait_20,
+    na.rm = FALSE
+  ),
+  STAI_total_score = sum(
+    (4 - stai_state_1), (4 - stai_state_2), stai_state_3, stai_state_4,
+    (4 - stai_state_5), stai_state_6, stai_state_7, (4 - stai_state_8),
+    stai_state_9, stai_state_10, (4 - stai_state_11), stai_state_12,
+    stai_state_13, stai_state_14, (4 - stai_state_15), (4 - stai_state_16),
+    stai_state_17, stai_state_18, (4 - stai_state_19), (4 - stai_state_20),
+    (4 - stai_trait_1), stai_trait_2, stai_trait_3, stai_trait_4,
+    stai_trait_5, (4 - stai_trait_6), (4 - stai_trait_7), stai_trait_8,
+    stai_trait_9, (4 - stai_trait_10), stai_trait_11, stai_trait_12,
+    (4 - stai_trait_13), stai_trait_14, stai_trait_15, (4 - stai_trait_16),
+    stai_trait_17, stai_trait_18, (4 - stai_trait_19), stai_trait_20,
+    na.rm = FALSE
+  )) %>%
+  ungroup()
+
+
+# Brief Pain Inventory (BPI) - Short Form Scoring
+# It has 13 items, Pain Intensity 0 to 10 and Pain Interference Score again 0 to 10. 
+# BPI scales are defines pain as follows (seperatly for severity and intensity):
+#Mild pain score:     1-4 
+#Moderate pain score: 5-6
+#Severe pain score    7-10
+
+secondary <- secondary %>%
+  rowwise() %>% 
+  mutate(BPI_Intensity = mean(c_across(q3:q6), na.rm = FALSE),
+         BPI_Interference = mean(c_across(q9a:q9g), na.rm = FALSE)) %>% 
+  ungroup()
+
+# DN4 (Douleur Neuropathique 4) Questionnaire Scoring
+# The score is calculated as the sum of the 10 items and the cut-off value for the diagnosis of neuropathic pain is a total score of 4/10.
+# 0-10 range with >=4 being suggestive of neuropathic pain.
+
+secondary <- secondary %>%
+  rowwise() %>% 
+  mutate(DN4_Score = sum(c_across(c(starts_with("dn4_"), starts_with("dn"), -dn4_complete, -dn4timestamp)), na.rm = FALSE)) %>% 
+  ungroup()
+
+# Pittsburgh Sleep Quality Index (PSQI) - Long Form Scoring
+# It has 21 items ranging from sleep quality, experince, and amount.  
+# The PSQI can be classified as continuous and can also be cutoff 0-4 is Good sleep quality; 5-21 is Poor sleep quality. 
+
+cols_to_adjust <- c(
+  "component2_2and3and4", "component5", "component5_v2", "component5_v3",
+  "component5_v4", "component5_v5", "component5_v6", "component5_v7",
+  "component5_v8", "component5_v9", "component1", "component6", 
+  "component7", "component7_9"
+)
+
+# Subtract 1 from all selected columns
+secondary[cols_to_adjust] <- secondary[cols_to_adjust] - 1
+
+#Component 2: SLEEP LATENCY
+secondary <- secondary %>%
+  mutate(component2_3_grp = case_when(
+    component2_3 <= 15 ~ 0,
+    component2_3 > 15 & component2_3 <= 30 ~ 1,
+    component2_3 > 30 & component2_3 <= 60 ~ 2,
+    component2_3 > 60 ~ 3,
+    FALSE ~ NA_real_  # In case the sum is outside these ranges
+  )
+  )
+
+secondary <- secondary %>%
+  mutate(component2_sum = component2_2and3and4 + component2_3_grp)
+
+
+secondary <- secondary %>%
+  mutate(component2_total = case_when(
+    component2_sum <= 0 ~ 0,
+    component2_sum >= 1 & component2_sum <= 2 ~ 1,
+    component2_sum >= 3 & component2_sum <= 4 ~ 2,
+    component2_sum >= 5 ~ 3,
+    FALSE ~ NA_real_  # In case the sum is outside these ranges
+  )
+  )
+
+#Component 3: DURATION OF SLEEP
+secondary <- secondary %>%
+  mutate(component4_1_grouped = case_when(
+    component4_1 >= 7 ~ 0,
+    component4_1 >= 6 & component4_1 < 7 ~ 1,
+    component4_1 >= 5 & component4_1 < 6 ~ 2,
+    component4_1 < 5 ~ 3,
+    FALSE ~ NA_real_  # In case the sum is outside these ranges
+  )
+  )
+
+#Component 4: SLEEP EFFICIENCY
+#install.packages("lubridate") #delete after installing
+library(lubridate)
+
+
+secondary <- secondary %>%
+  mutate(
+    # Convert hh:mm format to numeric hours
+    component4_2_2_hours = hour(component4_2_2) + minute(component4_2_2) / 60,
+    component4_2_1_hours = hour(component4_2_1) + minute(component4_2_1) / 60,
+    
+    # Calculate total hours in bed:
+    # If bed time is later than wake time (e.g. 23:00 vs 07:00), then sleep period = (24 - bed time) + wake time;
+    # Otherwise (bed time after midnight), sleep period = wake time - bed time.
+    total_hours_in_bed = ifelse(
+      component4_2_2_hours > component4_2_1_hours,
+      (24 - component4_2_2_hours) + component4_2_1_hours,
+      component4_2_1_hours - component4_2_2_hours
+    ),
+    
+    # If total_hours_in_bed is NA or 0, set it to NA to avoid division errors
+    total_hours_in_bed = ifelse(is.na(total_hours_in_bed) | total_hours_in_bed == 0, NA, total_hours_in_bed),
+    
+    # Calculate sleep efficiency: (# hours slept / # hours in bed) x 100%
+    sleep_efficiency = ifelse(!is.na(total_hours_in_bed) & total_hours_in_bed != 0, 
+                              (component4_1 / total_hours_in_bed) * 100, 
+                              NA),
+    
+    # Assign Component 4 score based on sleep efficiency
+    component4_score = case_when(
+      sleep_efficiency > 85  ~ 0,
+      sleep_efficiency >= 75 ~ 1,
+      sleep_efficiency >= 65 ~ 2,
+      sleep_efficiency < 65  ~ 3,
+      FALSE ~ NA_real_  # Assign NA if sleep efficiency is NA
+    )
+  )
+
+#Component 5: SLEEP DISTURANCE
+
+secondary <- secondary %>%
+  mutate(
+    # Calculate component5_sum using rowSums with na.rm = TRUE so that missing values are ignored
+    component5_sum = rowSums(select(., component5, component5_v2, component5_v3, component5_v4, 
+                                    component5_v5, component5_v6, component5_v7, component5_v8, component5_v9), 
+                             na.rm = FALSE),
+    # Create the grouping variable based on the calculated component5_sum
+    component5_total = case_when(
+      component5_sum == 0 ~ 0,
+      component5_sum >= 1 & component5_sum <= 9 ~ 1,
+      component5_sum > 9 & component5_sum <= 18 ~ 2,
+      component5_sum > 18 & component5_sum <= 27 ~ 3,
+      FALSE ~ NA_real_  # In case the sum is outside these ranges
+    )
+  )
+
+# Component 7: DAYTIME DYSFUNCITION
+secondary <- secondary %>%
+  mutate(component7_sum = component7 + component7_9)
+
+secondary <- secondary %>%
+  mutate(component7_total = case_when(
+    component7_sum == 0 ~ 0,
+    component7_sum >= 1 & component7_sum <= 2 ~ 1,
+    component7_sum >= 3 & component7_sum <= 4 ~ 2,
+    component7_sum >= 5 & component7_sum <= 6 ~ 3,  # Fixes issue with 6
+    FALSE ~ NA_real_  # Default case for unexpected values
+  ))
+
+# PSQI Global SCORE
+secondary <- secondary %>% 
+  rowwise() %>% 
+  mutate(PSQI_Component1 = sum(c_across(c("component1")), na.rm = FALSE), #Subjective Sleep Quality
+         PSQI_Component2 = sum(c_across(c("component2_total")), na.rm = FALSE), #Sleep Latency 
+         PSQI_Component3 = sum(c_across(c("component4_1_grouped")), na.rm = FALSE), #Sleep Duration
+         PSQI_Component4 = sum(c_across(c("component4_score")), na.rm = FALSE), #Habitual Sleep Efficiency
+         PSQI_Component5 = sum(c_across(c("component5_total")), na.rm = FALSE), #Sleep Disturbances
+         PSQI_Component6 = sum(c_across(c("component6")), na.rm = FALSE), #Use of Sleep Medication
+         PSQI_Component7 = sum(c_across(c("component7_total")), na.rm = FALSE), # Daytime Dysfunction
+         PSQI_Global_Score = sum(c_across(c("PSQI_Component1", "PSQI_Component2", "PSQI_Component3", 
+                                            "PSQI_Component4", "PSQI_Component5", "PSQI_Component6", 
+                                            "PSQI_Component7")), na.rm = FALSE)) %>%  #Sum of all scores (0 to 21), PSQI >5 indicates poor sleep quality
+  ungroup()
+
+
+
+# Make scores key variables
+
+NPQ_Score <- secondary$NPQ_Score
+DASS_Depression <- secondary$DASS_Depression
+DASS_Anxiety <- secondary$DASS_Anxiety
+DASS_Stress <- secondary$DASS_Stress
+PCS_Score <- secondary$PCS_Score
+PCS_Rumination <- secondary$PCS_Rumination
+PCS_Magnification <- secondary$PCS_Magnification
+PCS_Helplessness <- secondary$PCS_Helplessness
+STAI_State_Score <- secondary$STAI_State_Score
+STAI_Trait_Score <- secondary$STAI_Trait_Score
+STAI_total_score <- secondary$STAI_total_score
+BPI_Intensity <- secondary$BPI_Intensity
+BPI_Interference <- secondary$BPI_Interference
+DN4_Score <- secondary$DN4_Score
+PSQI_Component1 <- secondary$PSQI_Component1
+PSQI_Component2 <- secondary$PSQI_Component2
+PSQI_Component3 <- secondary$PSQI_Component3
+PSQI_Component4 <- secondary$PSQI_Component4
+PSQI_Component5 <- secondary$PSQI_Component5
+PSQI_Component6 <- secondary$PSQI_Component6
+PSQI_Component7 <- secondary$PSQI_Component7
+PSQI_Global_Score <- secondary$PSQI_Global_Score
+
+#do this edit to the secondary
+
+secondary <- secondary %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.nan(.), NA, .)),  # Replace NaN in numeric columns
+         across(where(is.character), ~ na_if(., "NaN"))) 
+
+
+secondary <- secondary %>%
+  mutate(across(c(NPQ_Score, DASS_Depression, DASS_Anxiety, DASS_Stress, PCS_Score, PCS_Rumination, PCS_Magnification, 
+                  PCS_Helplessness, STAI_State_Score, STAI_Trait_Score, STAI_total_score, DN4_Score,
+                  PSQI_Component1, PSQI_Component2, PSQI_Component3, PSQI_Component4, PSQI_Component5,
+                  PSQI_Component6, PSQI_Component7, PSQI_Global_Score), 
+                ~ if_else(is.na(BPI_Intensity) & . == 0, NA_real_, .)))
+
+str(secondary) #check the structure of your df.
+View(secondary)
+view(dfSummary(secondary))
+
+# Create simplified dataframes
+
+sum_sec <- data.frame(
+  general_health_before_attending_scanner_timestamp = secondary$general_health_before_attending_scanner_timestamp,
+  dob = secondary$dob[1:142],
+  age = age[1:142],
+  preorpost = secondary$preorpost[1:142],
+  vas = secondary$vas[1:142],
+  atscannerpain_3.f = secondary$atscannerpain_3.f[1:142],
+  medication_7days.f = secondary$medication_7days.f[1:142],
+  pain_medications.f = secondary$pain_medications.f[1:142],
+  session_sec = session_sec[1:142],
+  id_sec = id_sec[1:142],
+  ip_sec = ip_sec[1:142],
+  arm_sec = arm_sec[1:142],
+  order_sec = order_sec[1:142],
+  medication_phase = medication_phase[1:142],
+  NPQ_Score = NPQ_Score[1:142],
+  DASS_Depression = DASS_Depression[1:142],
+  DASS_Anxiety = DASS_Anxiety[1:142],
+  DASS_Stress = DASS_Stress[1:142],
+  PCS_Score = PCS_Score[1:142],
+  PCS_Rumination = PCS_Rumination[1:142],
+  PCS_Magnification = PCS_Magnification[1:142],
+  PCS_Helplessness = PCS_Helplessness[1:142],
+  STAI_State_Score = STAI_State_Score[1:142],
+  STAI_Trait_Score = STAI_Trait_Score[1:142],
+  STAI_total_score = STAI_total_score[1:142],
+  BPI_Intensity = BPI_Intensity[1:142],
+  BPI_Interference = BPI_Interference[1:142],
+  DN4_Score = DN4_Score[1:142],
+  PSQI_Component1 = PSQI_Component1[1:142],
+  PSQI_Component2 = PSQI_Component2[1:142],
+  PSQI_Component3 = PSQI_Component3[1:142],
+  PSQI_Component4 = PSQI_Component4[1:142],
+  PSQI_Component5 = PSQI_Component5[1:142],
+  PSQI_Component6 = PSQI_Component6[1:142],
+  PSQI_Component7 = PSQI_Component7[1:142],
+  PSQI_Global_Score = PSQI_Global_Score[1:142]
+)
+
+
+# Replace 0 in 'component_score' if 'adjacent_column' is NaN
+sum_sec <- sum_sec %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.nan(.), NA, .)),  # Replace NaN in numeric columns
+         across(where(is.character), ~ na_if(., "NaN"))) 
+
+
+sum_sec <- sum_sec %>%
+  mutate(across(c(NPQ_Score, DASS_Depression, DASS_Anxiety, DASS_Stress, PCS_Score, PCS_Rumination, PCS_Magnification, 
+                  PCS_Helplessness, STAI_State_Score, STAI_Trait_Score, STAI_total_score, DN4_Score,
+                  PSQI_Component1, PSQI_Component2, PSQI_Component3, PSQI_Component4, PSQI_Component5,
+                  PSQI_Component6, PSQI_Component7, PSQI_Global_Score), 
+                ~ if_else(is.na(BPI_Intensity) & . == 0, NA_real_, .)))
+
+# Make variables in sum_sec factors
+
+# DN4
+sum_sec$DN4_factor <- factor(ifelse(sum_sec$DN4_Score > 4, "Neuropathic", "Non neuropathic"))
+
+# NPQ
+sum_sec$NPQ_factor <- factor(ifelse(sum_sec$NPQ_Score > 0, "Neuropathic", "Non neuropathic"))
+
+# DASS
+sum_sec <- sum_sec %>%
+  mutate(
+    DASS_Depression.f = case_when(
+      DASS_Depression <= 9  ~ "Normal",
+      DASS_Depression <= 13 ~ "Mild",
+      DASS_Depression <= 20 ~ "Moderate",
+      DASS_Depression <= 27 ~ "Severe",
+      DASS_Depression > 27  ~ "Extremely Severe"
+    ),
+    
+    DASS_Anxiety.f = case_when(
+      DASS_Anxiety <= 7  ~ "Normal",
+      DASS_Anxiety <= 9  ~ "Mild",
+      DASS_Anxiety <= 14 ~ "Moderate",
+      DASS_Anxiety <= 19 ~ "Severe",
+      DASS_Anxiety > 19  ~ "Extremely Severe"
+    ),
+    
+    DASS_Stress.f = case_when(
+      DASS_Stress <= 14 ~ "Normal",
+      DASS_Stress <= 18 ~ "Mild",
+      DASS_Stress <= 25 ~ "Moderate",
+      DASS_Stress <= 33 ~ "Severe",
+      DASS_Stress > 33  ~ "Extremely Severe"
+    )
+  )
+sum_sec$DASS_Depression.f <- factor(sum_sec$DASS_Depression.f, levels = c("Normal", "Mild", "Moderate", "Severe", "Extremely Severe"), ordered = TRUE) 
+sum_sec$DASS_Anxiety.f <- factor(sum_sec$DASS_Anxiety.f, levels = c("Normal", "Mild", "Moderate", "Severe", "Extremely Severe"), ordered = TRUE) 
+sum_sec$DASS_Stress.f <- factor(sum_sec$DASS_Stress.f, levels = c("Normal", "Mild", "Moderate", "Severe", "Extremely Severe"), ordered = TRUE) 
+
+# PCS
+sum_sec <- sum_sec %>%
+  mutate(
+    PCS_Score.f = case_when(
+      PCS_Score <= 20  ~ "low",
+      PCS_Score <= 30 ~ "moderate",
+      PCS_Score > 31  ~ "high"
+    ))
+sum_sec$PCS_Score.f <- factor(sum_sec$PCS_Score.f, levels = c("low", "moderate", "high"), ordered = TRUE) 
+
+
+# STATE
+sum_sec <- sum_sec %>%
+  mutate(
+    STAI_State_Score.f = case_when(
+      STAI_State_Score <= 37  ~ "low",
+      STAI_State_Score <= 44 ~ "moderate",
+      STAI_State_Score >= 45  ~ "high"
+    ))
+
+sum_sec$STAI_State_Score.f <- factor(sum_sec$STAI_State_Score.f, levels = c("low", "moderate", "high"), ordered = TRUE) 
+
+# BPI
+sum_sec <- sum_sec %>%
+  mutate(
+    BPI_Intensity_rounded = round(BPI_Intensity, 0),  # Round to nearest whole number
+    BPI_Interference_rounded = round(BPI_Interference, 0))
+
+sum_sec <- sum_sec %>%
+  mutate(
+    BPI_Intensity.f = case_when(
+      is.na(BPI_Intensity) ~ NA_character_,  # Make NA if reference column is NA
+      BPI_Intensity_rounded == 0  ~ "No pain",
+      BPI_Intensity_rounded <= 1  ~ "Mild pain",
+      BPI_Intensity_rounded == 2  ~ "Mild pain",
+      BPI_Intensity_rounded == 3  ~ "Mild pain",
+      BPI_Intensity_rounded == 4  ~ "Mild pain",
+      BPI_Intensity_rounded <= 5  ~ "Moderate pain",
+      BPI_Intensity_rounded == 6 ~ "Moderate pain",
+      BPI_Intensity_rounded >= 7  ~ "Severe pain"
+    ),
+    
+    BPI_Interference.f = case_when(
+      is.na(BPI_Interference) ~ NA_character_,  # Make NA if reference column is NA
+      BPI_Interference_rounded == 0  ~ "No pain",
+      BPI_Interference_rounded <= 1  ~ "Mild pain",
+      BPI_Interference_rounded == 2  ~ "Mild pain",
+      BPI_Interference_rounded == 3  ~ "Mild pain",
+      BPI_Interference_rounded == 4  ~ "Mild pain",
+      BPI_Interference_rounded <= 5  ~ "Moderate pain",
+      BPI_Interference_rounded == 6 ~ "Moderate pain",
+      BPI_Interference_rounded >= 7  ~ "Severe pain"  
+    )
+  )
+
+
+sum_sec$BPI_Intensity.f <- factor(sum_sec$BPI_Intensity.f, levels = c("No pain", "Mild pain", "Moderate pain", "Severe pain"), ordered = TRUE) 
+sum_sec$BPI_Interference.f <- factor(sum_sec$BPI_Interference.f, levels = c("No pain", "Mild pain", "Moderate pain", "Severe pain"), ordered = TRUE) 
+
+# PSQI
+sum_sec <- sum_sec %>%
+  mutate(
+    PSQI_Global_Score.f = case_when(
+      PSQI_Global_Score <= 4  ~ "Good sleep",
+      PSQI_Global_Score > 4 ~ "Poor sleep"
+    ))
+
+sum_sec$PSQI_Global_Score.f <- factor(sum_sec$PSQI_Global_Score.f, levels = c("Poor sleep", "Good sleep"), ordered = TRUE) 
+
+# Check data structure 
+str(sum_sec$DN4_factor)
+str(sum_sec$NPQ_factor)
+str(sum_sec$DASS_Depression.f)
+str(sum_sec$DASS_Anxiety.f)
+str(sum_sec$DASS_Stress.f)
+str(sum_sec$PCS_Score.f)
+str(sum_sec$STAI_State_Score.f)
+str(sum_sec$BPI_Intensity.f)
+str(sum_sec$BPI_Interference.f)
+str(sum_sec$PSQI_Global_Score.f)
+
+str(sum_sec) 
+View(sum_sec)
+view(dfSummary(sum_sec)) 
+
+## CLEANING DATA ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Visually inspect the histogram of each continuous variable
+
+# Primary outcome
+hist(day_tx) # Note that R01 treatment was extended by a week due to MRI technical issue.
+hist(pain)
+hist(max_pain)
+
+plot(day_tx,
+     pain)
+
+# Secondary outcome
+hist(age)
+hist(NPQ_Score) 
+hist(DASS_Depression)
+hist(DASS_Anxiety)
+hist(DASS_Stress) 
+hist(PCS_Score)
+hist(PCS_Rumination)
+hist(PCS_Magnification) 
+hist(PCS_Helplessness)
+hist(STAI_State_Score)
+hist(STAI_Trait_Score) 
+hist(STAI_total_score)
+hist(BPI_Intensity)
+hist(BPI_Interference) 
+hist(DN4_Score)
+hist(PSQI_Global_Score)
+
+
+# Visually inspect the frequencies of each categorical variable
+
+table(arm)
+unique(arm)
+
+table(day_week)
+unique(day_week)
+
+table(id)
+unique(id)
+
+table(pain.f)
+unique(pain.f)
+
+table(phase)
+unique(phase)
+
+table(time)
+unique(time)
+
+table(treatment)
+unique(treatment)
+
+table(id_sec)
+unique(id_sec)
+
+table(ip_sec)
+unique(ip_sec)
+
+table(arm_sec)
+unique(arm_sec)
+
+table(preorpost)
+unique(preorpost)
+
+table(secondary$dob)
+unique(secondary$dob)
+
+# Inspect missing data
+
+#install.packages("naniar")
+library(naniar)
+
+vis_miss(data) 
+colSums(is.na(data)) 
+
+vis_miss(secondary)
+colSums(is.na(secondary))
+
+vis_miss(sum_sec)
+colSums(is.na(sum_sec))
+
+
+# Check the structure of each df (all variables should be coded correctly)
+
+str(data, list.len=ncol(data)) 
+str(secondary, list.len=ncol(secondary))
+str(sum_sec, list.len=ncol(sum_sec))
+str(BPI_Intensity, list.len=ncol(BPI_Intensity)) 
+str(BPI_Interference, list.len=ncol(BPI_Interference)) 
+str(DASS_Anxiety, list.len=ncol(DASS_Anxiety)) 
+str(DASS_Depression, list.len=ncol(DASS_Depression)) 
+str(DASS_Stress, list.len=ncol(DASS_Stress)) 
+str(DN4_Score, list.len=ncol(DN4_Score)) 
+str(NPQ_Score, list.len=ncol(NPQ_Score)) 
+str(PCS_Helplessness, list.len=ncol(PCS_Helplessness)) 
+str(PCS_Magnification, list.len=ncol(PCS_Magnification)) 
+str(PCS_Rumination, list.len=ncol(PCS_Rumination)) 
+str(PCS_Score, list.len=ncol(PCS_Score))
+str(PSQI_Global_Score, list.len=ncol(PSQI_Global_Score)) 
+str(STAI_State_Score, list.len=ncol(STAI_State_Score)) 
+str(STAI_Trait_Score, list.len=ncol(STAI_Trait_Score)) 
+str(STAI_total_score, list.len=ncol(STAI_total_score)) 
+
+## DERIVING DESCRIPTIVE STATISTICS ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Derive the Mean±SD and Median (IQR) for normally and non-normally distributed baseline characteristics, respectively
+
+# Primary outcome 
+shapiro.test(pain) # Not normally distributed   
+c(summary(pain), sd = sd(pain, na.rm = TRUE))
+
+pain_treatment <- aggregate(pain ~ treatment, data = data, 
+                 FUN = function(x) c(summary(x), sd = sd(x, na.rm = TRUE)))
+summary_by_treatment <- do.call(data.frame, pain_treatment)
+print(summary_by_treatment)
+
+
+shapiro.test(day_tx) # Not normally distributed   
+c(summary(day_tx), sd = sd(day_tx))
+
+shapiro.test(max_pain)  # Not normally distributed             
+c(summary(max_pain), sd = sd(max_pain, na.rm = TRUE))
+
+maxpain_treatment <- aggregate(max_pain ~ treatment, data = data_maxpain, 
+                            FUN = function(x) c(summary(x), sd = sd(x, na.rm = TRUE)))
+summary_by_treatmentmax <- do.call(data.frame, maxpain_treatment)
+print(summary_by_treatmentmax)
+
+
+# Secondary outcome
+shapiro.test(age) # Not normally distributed
+c(summary(age), sd = sd(age))
+
+shapiro.test(NPQ_Score) # Not normally distributed
+c(summary(NPQ_Score), sd = sd(NPQ_Score))
+
+shapiro.test(sum_sec$DASS_Depression)  # Not normally distributed
+c(summary(sum_sec$DASS_Depression), sd = sd(sum_sec$DASS_Depression)) # Range is 0-42
+
+shapiro.test(sum_sec$DASS_Anxiety) # Not normally distributed
+c(summary(sum_sec$DASS_Anxiety), sd = sd(sum_sec$DASS_Anxiety)) # Range is 0-42
+
+shapiro.test(sum_sec$DASS_Stress) # Not normally distributed
+c(summary(sum_sec$DASS_Stress), sd = sd(sum_sec$DASS_Stress)) # Range is 0-42
+
+shapiro.test(sum_sec$PCS_Score) # Not normally distributed
+c(summary(sum_sec$PCS_Score), sd = sd(sum_sec$PCS_Score)) # Range is 0-52
+
+shapiro.test(sum_sec$PCS_Rumination) # Not normally distributed
+c(summary(sum_sec$PCS_Rumination), sd = sd(sum_sec$PCS_Rumination))
+
+shapiro.test(sum_sec$PCS_Magnification) # Not normally distributed
+c(summary(sum_sec$PCS_Magnification), sd = sd(sum_sec$PCS_Magnification))
+
+shapiro.test(sum_sec$PCS_Helplessness) # Not normally distributed
+c(summary(sum_sec$PCS_Helplessness), sd = sd(sum_sec$PCS_Helplessness))
+
+shapiro.test(sum_sec$STAI_State_Score) # Not normally distributed
+c(summary(sum_sec$STAI_State_Score), sd = sd(sum_sec$STAI_State_Score)) # Range is 20-80
+
+shapiro.test(sum_sec$STAI_Trait_Score) # Normally distributed
+c(summary(sum_sec$STAI_Trait_Score), sd = sd(sum_sec$STAI_Trait_Score)) # Range is 20-80
+
+shapiro.test(sum_sec$STAI_total_score) # Not normally distributed
+c(summary(sum_sec$STAI_total_score), sd = sd(sum_sec$STAI_total_score)) # Range is 20-80
+
+shapiro.test(sum_sec$BPI_Intensity) # Not normally distributed
+c(summary(sum_sec$BPI_Intensity), sd = sd(sum_sec$BPI_Intensity))
+
+shapiro.test(sum_sec$BPI_Interference)  # Normally distributed
+c(summary(sum_sec$BPI_Interference), sd = sd(sum_sec$BPI_Interference))
+
+shapiro.test(sum_sec$DN4_Score) # Not normally distributed
+c(summary(sum_sec$DN4_Score), sd = sd(sum_sec$DN4_Score))
+
+shapiro.test(sum_sec$PSQI_Component1) # Not normally distributed
+c(summary(sum_sec$PSQI_Component1), sd = sd(sum_sec$PSQI_Component1))
+
+shapiro.test(sum_sec$PSQI_Component2) # Not normally distributed
+c(summary(sum_sec$PSQI_Component2), sd = sd(sum_sec$PSQI_Component2))
+
+shapiro.test(sum_sec$PSQI_Component3) # Not normally distributed
+c(summary(sum_sec$PSQI_Component3), sd = sd(sum_sec$PSQI_Component3))
+
+shapiro.test(sum_sec$PSQI_Component4) # Not normally distributed
+c(summary(sum_sec$PSQI_Component4), sd = sd(sum_sec$PSQI_Component4))
+
+shapiro.test(sum_sec$PSQI_Component5) # Not normally distributed
+c(summary(sum_sec$PSQI_Component5), sd = sd(sum_sec$PSQI_Component5))
+
+shapiro.test(sum_sec$PSQI_Component6) # Not normally distributed
+c(summary(sum_sec$PSQI_Component6), sd = sd(sum_sec$PSQI_Component6))
+
+shapiro.test(sum_sec$PSQI_Component7) # Not normally distributed
+c(summary(sum_sec$PSQI_Component7), sd = sd(sum_sec$PSQI_Component7))
+
+shapiro.test(sum_sec$PSQI_Global_Score)  # Normally distributed
+c(summary(sum_sec$PSQI_Global_Score), sd = sd(sum_sec$PSQI_Global_Score))
+
+# Derive frequencies for categorical variables
+
+# Primary outcome 
+summary(id) 
+summary(arm)
+summary(treatment)
+summary(day_week)
+summary(phase)
+summary(time)
+summary(order)
+summary(data_maxpain$max_pain)
+
+# Secondary outcome 
+summary(id_sec) 
+summary(ip_sec)
+summary(arm_sec)
+summary(order_sec)
+summary(medication_phase)
+
+## STATISTICAL ANALYSES ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+## Primary Outcome (Pain)
+
+##### ANALYSIS #####
+
+# In the primary outcome analysis we will be looking into overall pain (i.e. all pain ratings over the trial period) as well as maximum pain (i.e. the maximum pain of each day).
+# The aim of including both is to understand whether more specific natures to the pain are modified during the treatment period.
+
+# The primary outcome is composed of an 11-point scale ascending from 0 to 10. This data is ordinal but close to continuous. 
+# As such we will firstly check the data using models more appropriate to ordinal data. If an ordinal approach is not appropriate we will move on to a continuous with minimal modifications to the data
+# (i.e. avoiding any manipulation due to the fact that the data contains 0s)
+
+# A few key variables will be analysed to account for key effects: 
+
+# (1) We have the following factors:
+# Treatment (treatment) = 2-Level (WS) Categorical: CBD, Placebo
+# Phase (phase) = 2-Level (WS) Categorical: Inactive (Week 1), Active (Weeks 2-6)
+# *Day (day_tx) = Continuous
+# Time of Day (time) = 3-Level (WS) Categorical: T1, T2, T3
+# Note: Treatment Order (order) (2-Level (BS) Categorical: CBD First, Placebo First) and Treatment Period (arm) (2-Level (WS) Categorical: Period 1, Period 2) may also be relevant.
+# *We will be mindful that Phase and Day will be fully collinear because they correspond to non-overlapping ranges.
+
+# (2) We are primarily looking for one of the following effects:
+# A significant Treatment by Phase interaction (i.e., lower Pain on CBD than Placebo during the Active Phase)
+# A significant Treatment by Day interaction (i.e., a greater reduction in Pain over time on CBD than Placebo)
+# A significant Treatment by Phase by Day interaction (i.e., a greater reduction in Pain over time on CBD than Placebo during the Active Phase)
+
+# As such, we need to run the following analyses (and select the model with the lowest AIC):
+# a) Treatment * Phase
+# b) Treatment * Day
+# *c) Treatment * Phase * Day
+# *the 'next best' model will be used if any of the fixed effects in this one have VIFs >10.
+
+# Once we have identified the 'best' models (i.e., one each for overall and maximum pain), we will test whether any of the following improve their fit (i.e., reduce the AIC further):
+# d) [a, b or c] + Time of Day
+# e) [a, b or c] + Treatment Order
+# f) [a, b or c] + Treatment Period
+# g) [a, b or c] * Time of Day
+# h) [a, b or c] * Treatment Order
+# Note 1: If the 'preferred' model contains a four-way interaction (e.g., Treatment * Phase * Day * Time of Day), we may opt for the 'next best' alternative.
+# Note 2: we will not use d or g in our analysis of maximum pain (as Time of Day is no longer a factor).
+
+
+
+## Analysis 1: Overall Pain
+
+#install.packages("MuMIn")
+#install.packages("car")
+#install.packages("lme4")
+#install.packages("lmerTest")
+#install.packages("emmeans")
+#install.packages("glmmTMB")
+#install.packages("performance")
+#install.packages("DHARMa")
+#install.packages("ordinal")
+#install.packages("ordinal")  # Install package
+#install.packages("car")   # If not installed
+#install.packages("carData")
+#install.packages("RVAideMemoire")
+
+library(ordinal)
+library(ordinal)
+library(MuMIn)
+library(car)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(glmmTMB)
+library(performance)
+library(DHARMa)
+library(ordinal)
+library(car)
+library(carData)
+library(RVAideMemoire)
+
+
+# Starting with the cumulative links mixed effects model (treating the data as ordinal)
+
+str(pain.f)
+
+# Checking the best suited random effects structure
+
+m1cc <- clmm(pain.f ~ + (1+treatment|id), data = data) 
+m1dd <- clmm(pain.f ~ + (1|id), data = data) 
+
+# As m1cc fails to converge we use 1|id Error: optimizer nlminb failed to converge
+
+# So going ahead and using the following the random effects structure (1|id) when looking into our fixed effects:
+m1hh <- clmm(pain.f ~ treatment*phase + (1|id), data = data) 
+m1ii <- clmm(pain.f ~ treatment*day_tx + (1|id), data = data) 
+m1jj <- clmm(pain.f ~ treatment*phase*day_tx + (1|id), data = data)
+
+AICc(m1hh, m1ii, m1jj)
+
+#m1jj is the most suitable model. 
+
+check_model(m1jj)
+
+# Model m1jj appears to be the most suitable but shows high levels of collinearity.
+# Due to this we will opt for a linear model approach, treating the pain ratings as continuous to avoid complications with the model.
+
+# We will check if a linear mixed effect model is appropriate. 
+# For our current dataset we want to aim to avoid any transformation of the values collected (i.e. required in a generalised model or when residuals do not meet requirements)
+
+
+# Selecting the random effect structure
+
+m1a <- lmer(pain ~ + (1+treatment|id), data = data) 
+m1b <- lmer(pain ~ + (1|id), data = data)
+
+AICc(m1a, m1b)
+
+# Model m1a appears to be the best suited. 
+
+# Using the 1+treatment we will run the first round of linear mixed effects models and identify the model with the lowest (or most negative) AICc
+
+m1a <- lmer(pain ~ treatment*phase + (1+treatment|id), data = data) 
+m1b <- lmer(pain ~ treatment*day_tx + order + (1+treatment|id), data = data)
+m1c <- lmer(pain ~ treatment*phase*day_tx + (1+treatment|id), data = data)
+
+AICc(m1a, m1b, m1c)
+
+check_collinearity(m1c) # Some moderate and low correlations in this model
+
+m1d <- lmer(pain ~ treatment*phase + time + (1+treatment|id), data = data)
+m1e <- lmer(pain ~ treatment*phase + order + (1+treatment|id), data = data)
+m1f <- lmer(pain ~ treatment*phase + arm + (1+treatment|id), data = data)
+m1g <- lmer(pain ~ treatment*phase*time + (1+treatment|id), data = data)
+m1h <- lmer(pain ~ treatment*phase*order + (1+treatment|id), data = data)
+
+AICc(m1d, m1e, m1f, m1g, m1h)
+
+# m1d appears to be the best suited. 
+
+# Testing whether the residuals are normally distributed and homoscedastic 
+
+hist(resid(m1d)) # Passes visual inspection
+qqp(resid(m1d), "norm") # Passes visual inspection
+check_normality(m1d) # Shapiro-Wilk test
+# Visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1d), resid(m1d)) #visual inspection
+check_heteroscedasticity(m1d) #Breusch-Pagan Test
+# The model is homoscedastic.
+
+# Checking whether various other aspects of the model look appropriate.
+
+check_model(m1d)
+# No obvious issues with the model including no collinearity issues.
+
+summary(m1d)
+
+# Checking for outliers and influential cases
+check_outliers(m1d) # No outliers detected.
+summary(cooks.distance(m1d)) # The max. value is <1.0
+
+# Due to this model generally appearing to pass all checks (appears normal, homoscedastic, no collinearity issues) we will go ahead and use this model for the analysis. 
+# We will quickly check whether any of the other models above have more suited distributions.
+
+# model 1a
+hist(resid(m1a)) #visual inspection
+qqp(resid(m1a), "norm") #visual inspection
+check_normality(m1a) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1a), resid(m1a)) #visual inspection
+check_heteroscedasticity(m1a) #Breusch-Pagan Test
+
+# model 1b
+hist(resid(m1b)) #visual inspection
+qqp(resid(m1b), "norm") #visual inspection
+check_normality(m1b) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1b), resid(m1b)) #visual inspection
+check_heteroscedasticity(m1b) #Breusch-Pagan Test
+
+# model 1c
+hist(resid(m1c)) #visual inspection
+qqp(resid(m1c), "norm") #visual inspection
+check_normality(m1c) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1c), resid(m1c)) #visual inspection
+check_heteroscedasticity(m1c) #Breusch-Pagan Test
+
+# model 1e
+hist(resid(m1e)) #visual inspection
+qqp(resid(m1e), "norm") #visual inspection
+check_normality(m1e) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1e), resid(m1e)) #visual inspection
+check_heteroscedasticity(m1e) #Breusch-Pagan Test
+
+# model 1f
+hist(resid(m1f)) #visual inspection
+qqp(resid(m1f), "norm") #visual inspection
+check_normality(m1f) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1f), resid(m1f)) #visual inspection
+check_heteroscedasticity(m1f) #Breusch-Pagan Test
+
+# All of the models appear to encounter the same issue related to normality with all appearing to visually pass normality.
+
+# As such we will go ahead and work with the best suited model (m1d) as it passed all other requirements.
+
+# Running analysis as follows:
+
+anova(m1d)
+
+# Anova shows significant treatment, phase, time, and treatment:phase effects. 
+# Main effects
+  # *Treatment (p = 0.037) → Treatment has a significant effect on pain.
+  # Phase (p < 2.2e-16) → There is a highly significant effect of phase on pain, meaning pain levels change across phases.
+  # Time (p < 2.2e-16) → Time significantly affects pain, indicating that pain fluctuates over the day.
+# Interaction effects
+  # Significant (p = 1.52e-06) → The effect of treatment depends on the phase.
+  # This suggests that treatment does not affect pain consistently across all phases—its impact changes depending on the phase.
+
+# Investigate a significant main effect:
+
+# Categorical:
+emmeans(m1d,  
+        list(pairwise ~ treatment 
+        ), adjust = "sidak")
+# Treatment A and B appear to have similar values with treatment A having a slightly lower mean.
+
+emmeans(m1d,  
+        list(pairwise ~ phase 
+        ), adjust = "sidak")
+# The active phase has a slightly lower mean when compared to the inactive.
+        
+
+# Investigating the significant Treatment*Phase interaction:
+
+emm1 = emmeans(m1d, specs = ~ treatment*phase) 
+emm1 # we will use this use the order you see here to generate the vectors below
+A_Active = c(1, 0, 0, 0)
+B_Active = c(0, 1, 0, 0) 
+A_Inactive = c(0, 0, 1, 0)
+B_Inactive = c(0, 0, 0, 1)
+
+contrast(emm1, #identify your emmeans
+         method = list(B_Inactive - A_Inactive, B_Active - A_Active), #identify our comparisons
+         adjust = "sidak")
+
+list(B_Inactive - A_Inactive, B_Active - A_Active)
+
+# We therefore have completed this analysis and will move forward with m1d as the model for the primary outcome. 
+
+
+### Analysis 2: Maximum pain each day----
+
+# This analysis is similar to the overall pain that we discussed above as we start by looking at the data in its factor form.
+
+# Selecting the random effect structure
+
+m1cc <- clmm(max_pain.f ~ + (1+treatment|id), data = data_maxpain) 
+m1dd <- clmm(max_pain.f ~ + (1|id), data = data_maxpain) 
+
+AICc(m1cc, m1dd)
+
+# so going ahead and using the following models for fixed effect using the (1+treatment|id) random effect.
+
+m1hh <- clmm(max_pain.f ~ treatment*phase + (1+treatment|id), data = data_maxpain) 
+m1ii <- clmm(max_pain.f ~ treatment*day_tx + (1+treatment|id), data = data_maxpain) 
+m1jj <- clmm(max_pain.f ~ treatment*phase*day_tx + (1+treatment|id), data = data_maxpain)
+
+AICc(m1hh, m1ii, m1jj)
+
+check_model(m1jj)
+
+# Similar to the pain ratings m1jj appears to be the most suitable but shows high levels of collinearity. 
+# We will check the second best. 
+
+check_model(m1hh)
+
+# This model is also impacted by collinearity issues. 
+# Due to this we will opt for a generalised linear model approach, treating the pain ratings as continuous to avoid complications with the model. 
+
+
+# Linear mixed effect models: 
+
+#Select our random effects structure:
+
+m1a <- lmer(max_pain ~ + (1+treatment|id), data = data_maxpain) 
+m1b <- lmer(max_pain ~ + (1|id), data = data_maxpain)
+
+AICc(m1a, m1b)
+
+# m1a is best so we move on with this random effect to the next step. 
+
+# Run our first round of linear mixed effects models and identify the model with the lowest (or most negative) AIC
+
+m1a <- lmer(max_pain ~ treatment*phase + (1+treatment|id), data = data_maxpain)
+m1b <- lmer(max_pain ~ treatment*day_tx + order + (1+treatment|id), data = data_maxpain)
+m1c <- lmer(max_pain ~ treatment*phase*day_tx + arm + (1+treatment|id), data = data_maxpain)
+
+AICc(m1a, m1b, m1c)
+
+# The best model is m1a
+
+# Run our second round of linear mixed effects models and see whether any of these have a lower (or more negative) AIC than our original model
+
+m1e <- lmer(max_pain ~ treatment*phase + order + (1+treatment|id), data = data_maxpain)
+m1f <- lmer(max_pain ~ treatment*phase + arm + (1+treatment|id), data = data_maxpain)
+m1h <- lmer(max_pain ~ treatment*phase*order + (1+treatment|id), data = data_maxpain)
+
+AICc(m1e, m1f, m1h)
+
+# m1f is the lowest AICc.
+
+# Test whether the residuals are normally distributed and homoscedastic.
+
+hist(resid(m1f)) #visual inspection
+qqp(resid(m1f), "norm") #visual inspection
+check_normality(m1f) #Shapiro-Wilk test
+# The model fails the normality test and does appear to have a slight tail but otherwise some normality is apparent. 
+
+
+plot(fitted(m1f), resid(m1f)) #visual inspection
+check_heteroscedasticity(m1f) #Breusch-Pagan Test
+# No issues in terms of heteroscedasticity 
+
+# Check whether various other aspects of the model look appropriate 
+
+check_model(m1f)
+# There seem to be no collinearity issues.
+
+# Similar to the overall pain, this model generally appears to pass all checks (appears normal, homoscedastic, no collinearity issues) we will go ahead and use this model for the analysis. 
+# We will quickly check whether any of the other models above have more suited distributions.
+
+# model 1a
+hist(resid(m1a)) #visual inspection
+qqp(resid(m1a), "norm") #visual inspection
+check_normality(m1a) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1a), resid(m1a)) #visual inspection
+check_heteroscedasticity(m1a) #Breusch-Pagan Test
+
+# model 1b
+hist(resid(m1b)) #visual inspection
+qqp(resid(m1b), "norm") #visual inspection
+check_normality(m1b) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1b), resid(m1b)) #visual inspection
+check_heteroscedasticity(m1b) #Breusch-Pagan Test
+
+# model 1c
+hist(resid(m1c)) #visual inspection
+qqp(resid(m1c), "norm") #visual inspection
+check_normality(m1c) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1c), resid(m1c)) #visual inspection
+check_heteroscedasticity(m1c) #Breusch-Pagan Test
+
+# model 1d
+hist(resid(m1d)) #visual inspection
+qqp(resid(m1d), "norm") #visual inspection
+check_normality(m1d) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1d), resid(m1d)) #visual inspection
+check_heteroscedasticity(m1d) #Breusch-Pagan Test
+
+# model 1e
+hist(resid(m1e)) #visual inspection
+qqp(resid(m1e), "norm") #visual inspection
+check_normality(m1e) #Shapiro-Wilk test
+# Like our original model visually inspecting normality of residuals seems appropriate however the data does not pass the Shapiro-Wilk test. 
+
+plot(fitted(m1e), resid(m1e)) #visual inspection
+check_heteroscedasticity(m1e) #Breusch-Pagan Test
+
+# All of the models appear to encounter the same issue related to normality with all appearing to visually pass normality.
+
+# As such we will go ahead and work with the best suited model (m1f) as it passed all other requirements.
+
+# Running analysis as follows
+
+anova(m1f)
+
+# Anova shows significant treatment, phase, time, and treatment:phase effects. 
+# Main effects
+# *Treatment (p = 0.039) → Treatment has a significant effect on pain.
+# Phase (p < 2.15e-13) → There is a highly significant effect of phase on pain, meaning pain levels change across phases.
+# Arm (p < 0.0003401) → Time significantly affects pain, indicating that pain fluctuates over the day.
+# Interaction effects
+# Significant (p = 0.0004689) → The effect of treatment depends on the phase.
+# This suggests that treatment does not affect pain consistently across all phases—its impact changes depending on the phase.
+
+# Investigate a significant main effect:
+
+# Categorical:
+emmeans(m1f,  
+        list(pairwise ~ treatment 
+        ), adjust = "sidak")
+# Treatment A and B appear to have similar values with treatment A having a slightly lower mean.
+
+emmeans(m1f,  
+        list(pairwise ~ arm 
+        ), adjust = "sidak")
+# The arm 2 has a slightly lower mean when compared to the arm 1.
+
+
+# Investigating the significant Treatment*Phase interaction:
+
+emm1 = emmeans(m1f, specs = ~ treatment*phase) 
+emm1 # we will use this use the order you see here to generate the vectors below
+A_Active = c(1, 0, 0, 0)
+B_Active = c(0, 1, 0, 0) 
+A_Inactive = c(0, 0, 1, 0)
+B_Inactive = c(0, 0, 0, 1)
+
+contrast(emm1, #identify your emmeans
+         method = list(B_Inactive - A_Inactive, B_Active - A_Active), #identify our comparisons
+         adjust = "sidak")
+
+list(B_Inactive - A_Inactive, B_Active - A_Active)
+
+# We therefore have completed this analysis and will move forward with m1f as the model for max pain. 
+
+## Secondary Outcomes (Stress, Anxiety, Depression, Neuropathic Pain, Pain Catastrophisation, Sleep)----
+
+# In our secondary outcome analysis we will be looking at individual surveys regarding a range of characteristics.
+# The aim is to observe whether the surveys are impacted by the treatment phase (i.e. active or inactive) and type of treatment (i.e. CBD or placebo).
+
+# (1) We have the following factors:
+# Treatment = 2-Level (WS) Categorical: CBD, Placebo - ip_sec
+# Time = 2-Level (WS) Categorical: Pre-Treatment, Post-Treatment - preorpost
+# Treatment Order = 2-Level (BS) Categorical: CBD First, Placebo First - order_sec
+# Treatment Period = 2-Level (WS) Categorical: Period 1, Period 2 - arm_sec
+
+# (2) We are primarily looking for one of the following effects (and we will select the model with the lowest AIC):
+# a) Treatment * Time
+# b) Treatment * Time + Treatment Order - This will identify and control for systematic differences between the CBD-PLA and PLA-CBD groups (e.g., if randomisation is not 100% effective)
+# c) Treatment * Time + Treatment Period - This will identify and control for systematic differences between the first and second treatment period
+# d) Treatment * Time * Treatment Order - This will identify and control for carryover effects (i.e., time- and/or treatment-dependent differences between the CBD-PLA and PLA-CBD groups)
+
+# Data will be treated as categorical based on survey classifications. If categorical models fail we will then treat data as continuous.
+# Once you have identified the model with the lowest AIC, we will need to check any issues with the models (i.e. collinearity and normality  (Shapiro-Wilk test, p>0.05) and homoscedasticity (Levene test, p>0.05) in the case of continuous models)
+# If the continuous model violates assumptions or normality or homoscedasticity, we will need to SQRT transform the data and re-analyse it. This will happen again but with a LOG transform if the model continuous to fail testing.
+# We will not modify the data structure of the data if they contain 0s. Therefore in these cases we will not SQRT or LOG transform it (i.e. avoiding any manipulation due to the fact that the data contains  0s).
+
+# Though the above we have the capacity to identify situations where participants who receive CBD First differ from those who receive Placebo First (particularly at the Pre-Treatment time point) during Treatment Period 2.
+
+## Analysis 1: DN4_Score
+# It has 10 items, each scored as 0 (no) or 1 (yes) which are summed. 
+# 0-10 range with >=4 being suggestive of neuropathic pain.
+# This variable is categorical in nature due to the classification listed above, however can also be classified as continuous when simply observing the scores. 
+
+# We will start by looking at this variable in a categorical manner through a cumulative links mixed effects model
