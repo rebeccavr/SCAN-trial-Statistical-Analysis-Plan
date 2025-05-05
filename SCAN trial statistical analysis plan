@@ -1071,15 +1071,6 @@ check_heteroscedasticity(m1f) #Breusch-Pagan Test
 
 anova(m1d)
 
-# Anova shows significant treatment, phase, time, and treatment:phase effects. 
-# Main effects
-  # *Treatment (p = 0.037) → Treatment has a significant effect on pain.
-  # Phase (p < 2.2e-16) → There is a highly significant effect of phase on pain, meaning pain levels change across phases.
-  # Time (p < 2.2e-16) → Time significantly affects pain, indicating that pain fluctuates over the day.
-# Interaction effects
-  # Significant (p = 1.52e-06) → The effect of treatment depends on the phase.
-  # This suggests that treatment does not affect pain consistently across all phases—its impact changes depending on the phase.
-
 # Investigate a significant main effect:
 
 # Categorical:
@@ -1245,15 +1236,6 @@ check_heteroscedasticity(m1e) #Breusch-Pagan Test
 # Running analysis as follows
 
 anova(m1f)
-
-# Anova shows significant treatment, phase, time, and treatment:phase effects. 
-# Main effects
-# *Treatment (p = 0.039) → Treatment has a significant effect on pain.
-# Phase (p < 2.15e-13) → There is a highly significant effect of phase on pain, meaning pain levels change across phases.
-# Arm (p < 0.0003401) → Time significantly affects pain, indicating that pain fluctuates over the day.
-# Interaction effects
-# Significant (p = 0.0004689) → The effect of treatment depends on the phase.
-# This suggests that treatment does not affect pain consistently across all phases—its impact changes depending on the phase.
 
 # Investigate a significant main effect:
 
